@@ -18,6 +18,7 @@ using namespace std;
 
 struct MySolver : public Context {
     vector<Order> current_orders;
+    vector<Warehouse> current_warehouses;
     vector<DroneState> drones;
     int current_global_time;
 
@@ -40,8 +41,8 @@ struct MySolver : public Context {
 
     int find_nearest_warehouse_with_item(const Point& p, int item) {
         int min_dist, mini = -1;
-        for (int i = 0; i < warehouses.size(); ++i) {
-            auto& w = warehouses[i];
+        for (int i = 0; i < current_warehouses.size(); ++i) {
+            auto& w = current_warehouses[i];
             if (w.items[item] > 0) {
                 int dist = Distance(p, w.point);
                 if (mini == -1 or dist < min_dist) {
@@ -78,7 +79,7 @@ struct MySolver : public Context {
                 while (cur_cnt > 0) {
                     int d_id = find_nearest_drone_with_item(order.point, item);
                     int w_id = find_nearest_warehouse_with_item(order.point, item);
-                    int warehouse_dist = Distance(warehouses[w_id].point, order.point);
+                    int warehouse_dist = Distance(current_warehouses[w_id].point, order.point);
                     if (d_id != -1) {
                         int drone_dist = Distance(drones[d_id].point, order.point);
                         if (drone_dist < warehouse_dist * WAREHOUSE_COEF) {  // heuristic
@@ -90,8 +91,8 @@ struct MySolver : public Context {
                     // else
                     cur_perdolnost += warehouse_dist * WAREHOUSE_COEF;  // heuristic
                     potential_load_tasks_pool[order_i].emplace_back(w_id, item,
-                                                                    min(warehouses[w_id].items[item], cur_cnt));
-                    cur_cnt -= warehouses[w_id].items[item];
+                                                                    min(current_warehouses[w_id].items[item], cur_cnt));
+                    cur_cnt -= current_warehouses[w_id].items[item];
                 }
             }
             if (is_completed) {
@@ -127,18 +128,18 @@ struct MySolver : public Context {
 
     void do_load(multiset<tuple<int, int, int>>::iterator it, int drone_id) {
         auto [w_id, item, cnt] = *it;
-        int max_items = min({cnt, warehouses[w_id].items[item],
+        int max_items = min({cnt, current_warehouses[w_id].items[item],
                             (max_load - drones[drone_id].total_weight) / product_weights[item]});
         assert (max_items > 0);
-        int dist = Distance(drones[drone_id].point, warehouses[w_id].point);
+        int dist = Distance(drones[drone_id].point, current_warehouses[w_id].point);
         if (drones[drone_id].available_from + dist < t_simulation) {
             Solution[drone_id].push_back({Load, w_id, item, max_items});
         }
-        drones[drone_id].point = warehouses[w_id].point;
+        drones[drone_id].point = current_warehouses[w_id].point;
         drones[drone_id].item_counts[item] += max_items;
         drones[drone_id].total_weight += max_items * product_weights[item];
         drones[drone_id].available_from += dist;
-        warehouses[w_id].items[item] -= max_items;
+        current_warehouses[w_id].items[item] -= max_items;
 
         load_tasks_pool.erase(it);
         if (max_items != cnt) {
@@ -148,21 +149,22 @@ struct MySolver : public Context {
 
     void do_deliver(set<tuple<int, int, int>>::iterator it, int drone_id) {
         auto [order_id, item, cnt] = *it;
-        int max_items = min({cnt, orders[order_id].item_counts[item],
+        int max_items = min({cnt, current_orders[order_id].item_counts[item],
                             drones[drone_id].item_counts[item]});
         assert (max_items > 0);
-        int dist = Distance(drones[drone_id].point, orders[order_id].point);
+        int dist = Distance(drones[drone_id].point, current_orders[order_id].point);
         if (drones[drone_id].available_from + dist < t_simulation) {
             Solution[drone_id].push_back({Deliver, order_id, item, max_items});
         }
-        drones[drone_id].point = warehouses[order_id].point;
+        drones[drone_id].point = current_orders[order_id].point;
         drones[drone_id].item_counts[item] -= max_items;
         drones[drone_id].total_weight -= max_items * product_weights[item];
         drones[drone_id].available_from += dist;
-        auto order_item_ptr = orders[order_id].item_counts.find(item);
+
+        auto order_item_ptr = current_orders[order_id].item_counts.find(item);
         order_item_ptr->second -= max_items;
         if (order_item_ptr->second == 0) {
-            orders[order_id].item_counts.erase(order_item_ptr);
+            current_orders[order_id].item_counts.erase(order_item_ptr);
         }
 
         deliver_pool.erase(it);
@@ -180,7 +182,7 @@ struct MySolver : public Context {
             if (product_weights[item] > max_load - drones[drone_id].total_weight) {
                 continue;
             }
-            int dist = Distance(warehouses[w_id].point, drones[drone_id].point);
+            int dist = Distance(current_warehouses[w_id].point, drones[drone_id].point);
             if (best_load_task_it == load_tasks_pool.end() ||
                 dist < best_load_dist) {
                 best_load_dist = dist;
@@ -195,7 +197,7 @@ struct MySolver : public Context {
             if (!drones[drone_id].item_counts.count(item)) {
                 continue;
             }
-            int dist = Distance(orders[order_id].point, drones[drone_id].point);
+            int dist = Distance(current_orders[order_id].point, drones[drone_id].point);
             if (best_deliver_task_it == deliver_pool.end() ||
                 dist < best_deliver_dist) {
                 best_deliver_dist = dist;
@@ -228,11 +230,12 @@ struct MySolver : public Context {
 
     void Solve() {
         current_orders = orders; // to have current state;
+        current_warehouses = warehouses;
         Solution.resize(n_drones);
 
         for (int i =0; i < n_drones; ++i) { // init
             DroneState st;
-            st.point = warehouses[0].point;
+            st.point = current_warehouses[0].point;
             st.available_from = 0;
             st.total_weight = 0;
             drones.push_back(st);
