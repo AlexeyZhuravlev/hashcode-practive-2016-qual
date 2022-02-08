@@ -1,4 +1,4 @@
-#include <common.h>
+a#include <common.h>
 
 #include <cstdio>
 #include <cstring>
@@ -51,7 +51,6 @@ struct MySolver : public Context {
                 }
             }
         }
-        assert(mini != -1);
         return mini;
     }
 
@@ -65,7 +64,7 @@ struct MySolver : public Context {
             ranking[i] = i;
         }
 
-        const double WAREHOUSE_COEF = 2.;
+        const double WAREHOUSE_COEF = 5.;
         const double MAX_PERDOLNOST = 1e9;
         for (int order_i = 0; order_i < orders.size(); ++order_i) {
             auto& order = current_orders[order_i];
@@ -82,7 +81,7 @@ struct MySolver : public Context {
                     int warehouse_dist = Distance(current_warehouses[w_id].point, order.point);
                     if (d_id != -1) {
                         int drone_dist = Distance(drones[d_id].point, order.point);
-                        if (drone_dist < warehouse_dist * WAREHOUSE_COEF) {  // heuristic
+                        if (w_id == -1 || drone_dist < warehouse_dist * WAREHOUSE_COEF) {  // heuristic
                             cur_perdolnost += drone_dist;
                             cur_cnt -= drones[d_id].item_counts[item];
                             continue;
@@ -98,7 +97,7 @@ struct MySolver : public Context {
             if (is_completed) {
                 order.item_counts.clear();
             }
-            perdolnoct_ordera.push_back(is_completed ? cur_perdolnost : MAX_PERDOLNOST);
+            perdolnoct_ordera.push_back(!is_completed ? cur_perdolnost : MAX_PERDOLNOST);
         }
         sort(ranking.begin(), ranking.end(), [&](int a, int b) {
             return perdolnoct_ordera[a] < perdolnoct_ordera[b];
@@ -111,7 +110,7 @@ struct MySolver : public Context {
 
     void update_tasks_pool() {
         auto ranking = rank_orders();
-        const int MAX_CURRENT_ORDERS = 100;
+        const int MAX_CURRENT_ORDERS = 100; // heuristic
 
         load_tasks_pool.clear();
         deliver_pool.clear();
@@ -130,15 +129,19 @@ struct MySolver : public Context {
         auto [w_id, item, cnt] = *it;
         int max_items = min({cnt, current_warehouses[w_id].items[item],
                             (max_load - drones[drone_id].total_weight) / product_weights[item]});
+        if (max_items <= 0) {
+            cerr << "do load " << current_global_time << " " << cnt << " " << current_warehouses[w_id].items[item]
+                 << " " << (max_load - drones[drone_id].total_weight) << " " << product_weights[item] << endl;
+        }
         assert (max_items > 0);
         int dist = Distance(drones[drone_id].point, current_warehouses[w_id].point);
-        if (drones[drone_id].available_from + dist < t_simulation) {
+        if (drones[drone_id].available_from + dist + 1 < t_simulation) {
             Solution[drone_id].push_back({Load, w_id, item, max_items});
         }
         drones[drone_id].point = current_warehouses[w_id].point;
         drones[drone_id].item_counts[item] += max_items;
         drones[drone_id].total_weight += max_items * product_weights[item];
-        drones[drone_id].available_from += dist;
+        drones[drone_id].available_from += dist + 1;
         current_warehouses[w_id].items[item] -= max_items;
 
         load_tasks_pool.erase(it);
@@ -147,25 +150,33 @@ struct MySolver : public Context {
         }
     }
 
+    inline void decrease_or_delete(unordered_map<int, int>& item_counts, int item, int cnt) {
+        auto it = item_counts.find(item);
+        it->second -= cnt;
+        if (it->second == 0) {
+            item_counts.erase(it);
+        }
+    }
+
     void do_deliver(set<tuple<int, int, int>>::iterator it, int drone_id) {
         auto [order_id, item, cnt] = *it;
         int max_items = min({cnt, current_orders[order_id].item_counts[item],
                             drones[drone_id].item_counts[item]});
+        if (max_items <= 0) {
+            cerr << "do deliver " << current_global_time << " " << cnt << " " << current_orders[order_id].item_counts[item]
+            << " " << drones[drone_id].item_counts[item] << endl;
+        }
         assert (max_items > 0);
         int dist = Distance(drones[drone_id].point, current_orders[order_id].point);
-        if (drones[drone_id].available_from + dist < t_simulation) {
+        if (drones[drone_id].available_from + dist + 1 < t_simulation) {
             Solution[drone_id].push_back({Deliver, order_id, item, max_items});
         }
         drones[drone_id].point = current_orders[order_id].point;
-        drones[drone_id].item_counts[item] -= max_items;
+        decrease_or_delete(drones[drone_id].item_counts, item, max_items);
         drones[drone_id].total_weight -= max_items * product_weights[item];
-        drones[drone_id].available_from += dist;
+        drones[drone_id].available_from += dist + 1;
 
-        auto order_item_ptr = current_orders[order_id].item_counts.find(item);
-        order_item_ptr->second -= max_items;
-        if (order_item_ptr->second == 0) {
-            current_orders[order_id].item_counts.erase(order_item_ptr);
-        }
+        decrease_or_delete(current_orders[order_id].item_counts, item, max_items);
 
         deliver_pool.erase(it);
         if (max_items != cnt) {
@@ -179,7 +190,8 @@ struct MySolver : public Context {
         int best_load_dist = MAX_DIST;
         for (auto it = load_tasks_pool.begin(); it != load_tasks_pool.end(); ++it) {
             auto [w_id, item, cnt] = *it;
-            if (product_weights[item] > max_load - drones[drone_id].total_weight) {
+            if (current_warehouses[w_id].items[item] <= 0 ||
+                product_weights[item] > max_load - drones[drone_id].total_weight) {
                 continue;
             }
             int dist = Distance(current_warehouses[w_id].point, drones[drone_id].point);
@@ -208,13 +220,11 @@ struct MySolver : public Context {
             return false;
         }
         // heuristic
-        if (best_load_dist == 0 || best_deliver_dist == MAX_DIST) {
+        if (best_deliver_dist == MAX_DIST) {
             do_load(best_load_task_it, drone_id);
         } else if (best_deliver_dist == 0 || best_load_dist == MAX_DIST) {
             do_deliver(best_deliver_task_it, drone_id);
-        } else if (best_deliver_dist < best_load_dist) {
-            do_deliver(best_deliver_task_it, drone_id);
-        } else if (best_deliver_dist * 2 < best_load_dist && drones[drone_id].total_weight >= max_load / 2) {
+        } else if (best_deliver_dist * 0.7 < best_load_dist) {
             do_deliver(best_deliver_task_it, drone_id);
         } else if (current_global_time + best_load_dist > t_simulation) {
             do_deliver(best_deliver_task_it, drone_id);
@@ -243,7 +253,7 @@ struct MySolver : public Context {
         }
 
         current_global_time = 0;
-        const int UPDATE_POOL_EVERY = 1000;  // heuristic
+        const int UPDATE_POOL_EVERY = 10;  // heuristic
         update_tasks_pool();
         int next_update = UPDATE_POOL_EVERY;
 
