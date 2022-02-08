@@ -18,6 +18,11 @@ using namespace std;
 
 
 struct Context {
+    struct Point {
+        int r;
+        int c;
+    };
+
     enum CommandType {
         Deliver = 'D',
         Load = 'L',
@@ -37,15 +42,21 @@ struct Context {
     TSolution Solution;
 
     struct Warehouse {
-        int r, c;
+        Point point;
         vector<int> items;
     };
 
     struct Order {
         int id;
-        int r, c;
+        Point point;
         int total_items, total_weight;
         unordered_map<int, int> item_counts;
+    };
+
+    struct DroneState {
+        Point point;
+        unordered_map<int, int> item_counts;
+        int available_from;
     };
 
     int n_drones, n_rows, n_cols, max_load, t_simulation;
@@ -66,7 +77,7 @@ struct Context {
         cin >> n_warehouses;
         warehouses.resize(n_warehouses, {});
         for (auto &w :  warehouses) {
-            cin >> w.r >> w.c;
+            cin >> w.point.r >> w.point.c;
             w.items.resize(n_products);
             for (int i = 0; i < n_products; ++i) {
                 cin >> w.items[i];
@@ -77,7 +88,7 @@ struct Context {
         for (int i = 0; i < n_orders; ++i) {
             auto & o = orders[i];
             o.id = i;
-            cin >> o.r >> o.c;
+            cin >> o.point.r >> o.point.c;
             cin >> o.total_items;
             for (int j = 0; j < o.total_items; ++j) {
                 int item;
@@ -106,5 +117,4 @@ struct Context {
     uint64_t GetScore() {
         return 0;
     }
-    
 };
