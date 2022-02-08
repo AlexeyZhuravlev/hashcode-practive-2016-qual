@@ -150,15 +150,15 @@ struct Context {
             DroneState drone = drone_state.top();
             drone_state.pop();
             auto& command = Solution[drone.id][next_commands[drone.id]];
-            cerr << "Drone " << drone.id << endl;
-
-            cerr << "Command " << static_cast<char>(command.type) << " " << command.target_id << " " << command.product_type << " " << command.num_products << endl;
+            //cerr << "Drone " << drone.id << endl;
+            //cerr << "Command " << static_cast<char>(command.type) << " " << command.target_id << " " << command.product_type << " " << command.num_products << endl;
             switch (command.type) {
                 case Deliver:
                 {
                     int order_id = command.target_id;
                     Order& order = order_state[order_id];
                     int distance = Distance(drone.point, order.point);
+                    //cerr << "Fly distance " << distance << endl;
                     order.item_counts[command.product_type] -= command.num_products;
                     if (order.item_counts[command.product_type] < 0) {
                         cerr << "Invalid num items for order " << order_id << endl;
@@ -170,6 +170,7 @@ struct Context {
                         cerr << "No items to deliver for drone " << drone.id << endl;
                         return 0;
                     }
+                    drone.point = order.point;
                     drone.available_from += distance + 1;
                     order_delivery[order_id] = drone.available_from;
                     break;
@@ -179,6 +180,7 @@ struct Context {
                     int warehouse_id = command.target_id;
                     Warehouse& warehouse = warehouses_state[warehouse_id];
                     int distance = Distance(drone.point, warehouse.point);
+                    //cerr << "Fly distance " << distance << endl;
                     warehouse.items[command.product_type] -= command.num_products;
                     if (warehouse.items[command.product_type] < 0) {
                         cerr << "No items on warehouse " << warehouse_id << endl;
@@ -190,6 +192,7 @@ struct Context {
                         cerr << "Max load exceeded for drone " << drone.id << endl;
                         return 0;
                     }
+                    drone.point = warehouse.point;
                     drone.available_from += distance + 1;
                     break;
                 }
@@ -201,6 +204,7 @@ struct Context {
                     warehouse.items[command.product_type] += command.num_products;
                     drone.item_counts[command.product_type] -= command.num_products;
                     drone.total_weight -= command.num_products * product_weights[command.product_type];
+                    drone.point = warehouse.point;
                     drone.available_from += distance + 1;
                     break;
                 }
@@ -214,7 +218,7 @@ struct Context {
                 cerr << "Drone commands out of simulation " << drone.id << endl;
                 return 0;
             }
-            cerr << "Turn: " << drone.available_from << endl;
+            //cerr << "Turn: " << drone.available_from << endl;
             ++next_commands[drone.id];
             if (next_commands[drone.id] < Solution[drone.id].size()) {
                 drone.next_unload = Solution[drone.id][next_commands[drone.id]].type == Unload;
@@ -224,9 +228,9 @@ struct Context {
         uint64_t total_score = 0;
         for (int i = 0; i < n_orders; ++i) {
             bool finished = true;
-            cerr << "Order " << i << endl;
+            //cerr << "Order " << i << endl;
             for (auto [k, v]: order_state[i].item_counts) {
-                cerr << k << " " << v << endl;
+                //cerr << k << " " << v << endl;
                 if (v != 0) {
                     finished = false;
                     break;
@@ -235,7 +239,7 @@ struct Context {
             if (finished) {
                 int finish_time = order_delivery[i];
                 int score = static_cast<int>(ceil(double(t_simulation - finish_time) / t_simulation * 100));
-                cerr << finish_time << " Local score " << score << endl;
+                //cerr << finish_time << " Local score " << score << endl;
                 total_score += score;
             }
         }
