@@ -1,4 +1,4 @@
-t comm#pragma once
+#pragma once
 
 #include <algorithm>
 #include <vector>
@@ -16,8 +16,24 @@ t comm#pragma once
 
 using namespace std;
 
+
 struct Context {
-    using TSolution = int;
+    enum CommandType {
+        Deliver = 'D',
+        Load = 'L',
+        Undload = 'U',
+        Wait = 'W'
+    };
+
+    struct Command {
+        CommandType type;
+        int target_id;
+        int product_type;
+        int num_products;
+        int wait_time;
+    };
+
+    using TSolution = vector<vector<Command>>;
     TSolution Solution;
 
     struct Warehouse {
@@ -73,7 +89,18 @@ struct Context {
     }
 
     void Output() {
-        
+        for (int i = 0; i < n_drones; ++i) {
+            for (int j = 0; j < Solution[i].size(); ++j) {
+                auto& command = Solution[i][j];
+                cout << i << " " << static_cast<char>(command.type) << " ";
+                if (command.type == 'W') {
+                    cout << command.wait_time;
+                } else {
+                    cout << command.target_id << " " << command.product_type << " " << command.num_products;
+                }
+                cout << endl;
+            }
+        }
     }
 
     uint64_t GetScore() {
