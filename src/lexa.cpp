@@ -18,7 +18,16 @@ using namespace std;
 
 struct MySolver : public Context {
     void Solve() {
-        // Solution goes here
+        Solution.resize(n_drones);
+        Solution[0].push_back({Load, 0, 0, 1});
+        Solution[0].push_back({Load, 0, 1, 1});
+        Solution[0].push_back({Deliver, 0, 0, 1});
+        Solution[0].push_back({Load, 1, 2, 1});
+        Solution[0].push_back({Deliver, 0, 2, 1});
+        Solution[1].push_back({Load, 1, 2, 1});
+        Solution[1].push_back({Deliver, 2, 2, 1});
+        Solution[1].push_back({Load, 0, 0, 1});
+        Solution[1].push_back({Deliver, 1, 0, 1});
     }
 };
 
@@ -38,6 +47,7 @@ int main() {
     cerr << "Outputting" << endl;
     solver.Output();
 
+    cerr << "Scoring" << endl;
     cerr << solver.GetScore() << endl;
     return 0;
 }
