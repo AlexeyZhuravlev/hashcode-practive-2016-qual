@@ -63,9 +63,9 @@ struct Context {
 
         bool operator<(const DroneState& other) const {
             if (available_from == other.available_from) {
-                return next_unload;
+                return other.next_unload;
             }
-            return available_from < other.available_from;
+            return available_from > other.available_from;
         }
     };
 
@@ -135,18 +135,24 @@ struct Context {
 
         for (int i = 0; i < n_drones; ++i) {
             if (Solution[i].size() > 0) {
-                drone_state.push(
-                    {warehouses[0].point, {}, 0, i, false}
-                );
+                DroneState state;
+                state.point = warehouses[0].point;
+                state.id = i;
+                state.available_from = -1;
+                state.total_weight = 0;
+                state.next_unload = false;
+                drone_state.push(state);
             }
         }
 
 
         while (!drone_state.empty()) {
-            cerr << "Command" << endl;
             DroneState drone = drone_state.top();
             drone_state.pop();
             auto& command = Solution[drone.id][next_commands[drone.id]];
+            cerr << "Drone " << drone.id << endl;
+
+            cerr << "Command " << static_cast<char>(command.type) << " " << command.target_id << " " << command.product_type << " " << command.num_products << endl;
             switch (command.type) {
                 case Deliver:
                 {
@@ -159,6 +165,7 @@ struct Context {
                         return 0;
                     }
                     drone.item_counts[command.product_type] -= command.num_products;
+                    drone.total_weight -= command.num_products * product_weights[command.product_type];
                     if (drone.item_counts[command.product_type] < 0) {
                         cerr << "No items to deliver for drone " << drone.id << endl;
                         return 0;
@@ -193,6 +200,7 @@ struct Context {
                     int distance = Distance(drone.point, warehouse.point);
                     warehouse.items[command.product_type] += command.num_products;
                     drone.item_counts[command.product_type] -= command.num_products;
+                    drone.total_weight -= command.num_products * product_weights[command.product_type];
                     drone.available_from += distance + 1;
                     break;
                 }
@@ -206,6 +214,7 @@ struct Context {
                 cerr << "Drone commands out of simulation " << drone.id << endl;
                 return 0;
             }
+            cerr << "Turn: " << drone.available_from << endl;
             ++next_commands[drone.id];
             if (next_commands[drone.id] < Solution[drone.id].size()) {
                 drone.next_unload = Solution[drone.id][next_commands[drone.id]].type == Unload;
@@ -215,7 +224,9 @@ struct Context {
         uint64_t total_score = 0;
         for (int i = 0; i < n_orders; ++i) {
             bool finished = true;
+            cerr << "Order " << i << endl;
             for (auto [k, v]: order_state[i].item_counts) {
+                cerr << k << " " << v << endl;
                 if (v != 0) {
                     finished = false;
                     break;
@@ -223,7 +234,8 @@ struct Context {
             }
             if (finished) {
                 int finish_time = order_delivery[i];
-                int score = static_cast<int>(ceil((t_simulation - finish_time) / t_simulation * 100));
+                int score = static_cast<int>(ceil(double(t_simulation - finish_time) / t_simulation * 100));
+                cerr << finish_time << " Local score " << score << endl;
                 total_score += score;
             }
         }
