@@ -26,7 +26,7 @@ struct Context {
     enum CommandType {
         Deliver = 'D',
         Load = 'L',
-        Undload = 'U',
+        Unload = 'U',
         Wait = 'W'
     };
 
@@ -43,7 +43,7 @@ struct Context {
 
     struct Warehouse {
         Point point;
-        vector<int> items;
+        vector<int> items; // item counts
     };
 
     struct Order {
@@ -57,6 +57,16 @@ struct Context {
         Point point;
         unordered_map<int, int> item_counts;
         int available_from;
+        int total_weight;
+        int id;
+        bool next_unload = false;
+
+        bool operator<(const DroneState& other) const {
+            if (available_from == other.available_from) {
+                return next_unload;
+            }
+            return available_from < other.available_from;
+        }
     };
 
     int n_drones, n_rows, n_cols, max_load, t_simulation;
@@ -115,6 +125,114 @@ struct Context {
     }
 
     uint64_t GetScore() {
-        return 0;
+        vector<Warehouse> warehouses_state = warehouses;
+        vector<Order> order_state = orders;
+        priority_queue<DroneState> drone_state;
+        vector<int> next_commands;
+        vector<int> order_delivery;
+        order_delivery.assign(n_orders, 0);
+        next_commands.assign(n_drones, 0);
+
+        for (int i = 0; i < n_drones; ++i) {
+            if (Solution[i].size() > 0) {
+                drone_state.push(
+                    {warehouses[0].point, {}, 0, i, false}
+                );
+            }
+        }
+
+
+        while (!drone_state.empty()) {
+            cerr << "Command" << endl;
+            DroneState drone = drone_state.top();
+            drone_state.pop();
+            auto& command = Solution[drone.id][next_commands[drone.id]];
+            switch (command.type) {
+                case Deliver:
+                {
+                    int order_id = command.target_id;
+                    Order& order = order_state[order_id];
+                    int distance = Distance(drone.point, order.point);
+                    order.item_counts[command.product_type] -= command.num_products;
+                    if (order.item_counts[command.product_type] < 0) {
+                        cerr << "Invalid num items for order " << order_id << endl;
+                        return 0;
+                    }
+                    drone.item_counts[command.product_type] -= command.num_products;
+                    if (drone.item_counts[command.product_type] < 0) {
+                        cerr << "No items to deliver for drone " << drone.id << endl;
+                        return 0;
+                    }
+                    drone.available_from += distance + 1;
+                    order_delivery[order_id] = drone.available_from;
+                    break;
+                }
+                case Load:
+                {
+                    int warehouse_id = command.target_id;
+                    Warehouse& warehouse = warehouses_state[warehouse_id];
+                    int distance = Distance(drone.point, warehouse.point);
+                    warehouse.items[command.product_type] -= command.num_products;
+                    if (warehouse.items[command.product_type] < 0) {
+                        cerr << "No items on warehouse " << warehouse_id << endl;
+                        return 0;
+                    }
+                    drone.item_counts[command.product_type] += command.num_products;
+                    drone.total_weight += product_weights[command.product_type] * command.num_products;
+                    if (drone.total_weight > max_load) {
+                        cerr << "Max load exceeded for drone " << drone.id << endl;
+                        return 0;
+                    }
+                    drone.available_from += distance + 1;
+                    break;
+                }
+                case Unload:
+                {
+                    int warehouse_id = command.target_id;
+                    Warehouse& warehouse = warehouses_state[warehouse_id];
+                    int distance = Distance(drone.point, warehouse.point);
+                    warehouse.items[command.product_type] += command.num_products;
+                    drone.item_counts[command.product_type] -= command.num_products;
+                    drone.available_from += distance + 1;
+                    break;
+                }
+                case Wait:
+                {
+                    drone.available_from += command.wait_time;
+                    break;
+                }
+            }
+            if (drone.available_from > t_simulation) {
+                cerr << "Drone commands out of simulation " << drone.id << endl;
+                return 0;
+            }
+            ++next_commands[drone.id];
+            if (next_commands[drone.id] < Solution[drone.id].size()) {
+                drone.next_unload = Solution[drone.id][next_commands[drone.id]].type == Unload;
+                drone_state.push(drone);
+            }
+        }
+        uint64_t total_score = 0;
+        for (int i = 0; i < n_orders; ++i) {
+            bool finished = true;
+            for (auto [k, v]: order_state[i].item_counts) {
+                if (v != 0) {
+                    finished = false;
+                    break;
+                }
+            }
+            if (finished) {
+                int finish_time = order_delivery[i];
+                int score = static_cast<int>(ceil((t_simulation - finish_time) / t_simulation * 100));
+                total_score += score;
+            }
+        }
+        return total_score;
+    }
+
+    int Distance(const Point& a, const Point& b) {
+        double distance = sqrt((a.c - b.c) * (a.c - b.c) + (a.r - b.r) * (a.r - b.r));
+
+        return static_cast<int>(ceil(distance));
     }
 };
